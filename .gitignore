@@ -1,0 +1,5 @@
+/build
+/attendance-app/node_modules
+/env
+/attendance-app/out
+/dist
