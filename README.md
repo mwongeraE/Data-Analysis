@@ -1,6 +1,6 @@
-Sonar Hr Web App to analyze attendance
+# Sonar Hr Web App to analyze attendance
 
-##Packages
+## Packages
 Flask==3.0.3
 Jinja2==3.1.4
 numpy==2.0.1
