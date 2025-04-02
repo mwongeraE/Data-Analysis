@@ -11,6 +11,10 @@ app.config['UPLOAD_FOLDER'] = './uploaded'
 app.config['DOWNLOAD_FOLDER'] = './csv'
 basedir = os.path.abspath(os.path.dirname(__file__))
 
+@app.route('/ping', methods=['GET'])
+def ping():
+    return jsonify({"status": "OK"}), 200
+
 @app.route('/')
 def home():
     return render_template('upload_form.html')
