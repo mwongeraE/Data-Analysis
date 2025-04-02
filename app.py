@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, abort, make_response, jsonify
 from werkzeug.utils import secure_filename
 import os
 import pandas as pd
+from datetime import datetime, timedelta
 
 app = Flask(__name__)
 
@@ -22,49 +23,87 @@ def download_file(name):
 def upload_file():
     if 'file' in request.files:
         file = request.files['file']
-        print(file)
-        if 'file' not in request.files:
-          return 'No file part in the request', 400
         if file.filename == '':
-          return 'No selected file', 400
+            return 'No selected file', 400
         if file and not allowed_file(file.filename):
-          return 'File type not allowed', 400
+            return 'File type not allowed', 400
         if file and allowed_file(file.filename):
             filename = secure_filename(file.filename)
-            
-            print("filename", file)
             file.save(os.path.join(basedir, app.config['UPLOAD_FOLDER'], filename))
             
-            filex = os.path.join(basedir,app.config['UPLOAD_FOLDER'], filename)
-            print(filex)
-            data_csv = pd.read_csv(os.path.join(basedir, app.config['UPLOAD_FOLDER'], filename))
-            data_csv['Time'] = pd.to_datetime(data_csv['Time'], format='%d-%m-%Y %H:%M:%S')
+            # Read the additional form data
+            start_date_str = request.form.get('start_date')
+            end_date_str = request.form.get('end_date')
+            hours = request.form.get('hours')
+            
+            # Convert the dates to datetime objects
+            start_date = datetime.strptime(start_date_str, '%Y-%m-%d')
+            end_date = datetime.strptime(end_date_str, '%Y-%m-%d')
+            
+            # Read the uploaded CSV file
+            filex = os.path.join(basedir, app.config['UPLOAD_FOLDER'], filename)
+            data_csv = pd.read_csv(filex)
+            data_csv['Time'] = pd.to_datetime(data_csv['Time'], dayfirst=True)
             data_csv['Date'] = data_csv['Time'].dt.date
-            sorted_data = data_csv.groupby(['Name', 'Date']).agg(
+            
+            # Generate a complete DataFrame of all weekdays between the start and end dates
+            all_dates = pd.DataFrame({'Date': pd.date_range(start=start_date, end=end_date)})
+            all_dates = all_dates[all_dates['Date'].dt.weekday != 6]
+            all_dates['Date'] = all_dates['Date'].dt.date
+            
+            # Group the data by employee and date, and calculate the earliest and latest times
+            data_csv = data_csv.groupby(['Emp ID', 'Name', 'Date'], as_index=False).agg(
                 earliest_time=('Time', 'min'),
                 latest_time=('Time', 'max')
-            ).reset_index()
-            sorted_data['hours_difference'] = (sorted_data['latest_time'] - sorted_data['earliest_time'])
-            sorted_data['hours_difference_str'] = sorted_data['hours_difference'].apply(lambda x: f"{x.components.hours:02}:{x.components.minutes:02}")
+            ).reset_index(drop=True)
+            data_csv['hours_difference'] = (data_csv['latest_time'] - data_csv['earliest_time'])
+            data_csv['hours_difference_str'] = data_csv['hours_difference'].apply(lambda x: f"{x.components.hours:02}:{x.components.minutes:02}")
             
-            # Identify overtime
-            # Calculate overtime
-            def calculate_overtime(time_diff):
-                if time_diff.components.hours >= 9:
-                    overtime_seconds = (time_diff - pd.Timedelta(hours=9)).total_seconds()
-                    overtime_hours = int(overtime_seconds // 3600)
-                    overtime_minutes = int((overtime_seconds % 3600) // 60)
-                    return f"{overtime_hours:02}:{overtime_minutes:02}"
-                else:
+            # Extract unique employee details for generating absence entries
+            employees = data_csv[['Emp ID', 'Name']].drop_duplicates()
+            
+            # Merge all dates with employee data to generate all possible combinations
+            all_combinations = pd.merge(employees, all_dates, how='cross')
+            
+            # Merge all combinations with grouped data to identify absences
+            full_data = pd.merge(all_combinations, data_csv, on=['Emp ID', 'Name', 'Date'], how='left')
+            
+            # Fill NaN values for absence entries
+            full_data['earliest_time'].fillna(pd.NaT, inplace=True)
+            full_data['latest_time'].fillna(pd.NaT, inplace=True)
+            full_data['hours_difference'].fillna(pd.Timedelta(seconds=0), inplace=True)
+            full_data['hours_difference_str'].fillna("00:00", inplace=True)
+            full_data['Attendance State'] = full_data['earliest_time'].apply(lambda x: 'Present' if pd.notna(x) else 'Absent')
+            
+            # Calculate overtime with Saturday rule
+            def calculate_overtime(row):
+                if row['Attendance State'] == 'Absent':
                     return "00:00"
-            sorted_data['overtime'] = sorted_data['hours_difference'].apply(calculate_overtime)
-            
-            # Here you should save the file
-            # file.save('./uploaded', filename)
+                
+                time_diff = row['hours_difference']
+                if pd.notnull(time_diff):
+                    # Check for Saturdays
+                    if row['Date'].weekday() == 5:  # Saturday
+                        threshold = pd.Timedelta(hours=6)
+                    else:  # Other weekdays
+                        threshold = pd.Timedelta(hours=int(hours))
+                    if time_diff > threshold:
+                        overtime_seconds = (time_diff - threshold).total_seconds()
+                        overtime_hours = int(overtime_seconds // 3600)
+                        overtime_minutes = int((overtime_seconds % 3600) // 60)
+                        return f"{overtime_hours:02}:{overtime_minutes:02}"
+                return "00:00"
+
+            full_data['overtime'] = full_data.apply(calculate_overtime, axis=1)
+
+            # Sort and save the data
+            full_data.sort_values(by=['Emp ID', 'Date'], inplace=True)
             try:
-                sorted_data.to_csv( os.path.join(basedir, app.config['DOWNLOAD_FOLDER'], 'sorted.csv'), index=False)
+                output_path = os.path.join(basedir, app.config['DOWNLOAD_FOLDER'], 'sorted.csv')
+                full_data.to_csv(output_path, index=False)
             except Exception as e:
                 return f'Error saving file: {str(e)}', 500
+            
             return redirect(url_for('download_file', name='sorted.csv'))
 
     return 'No file uploaded'

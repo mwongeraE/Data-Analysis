@@ -7,12 +7,24 @@
       <h2>Upload Attendance CSV File</h2>
       <div class="drop_box">
          <header>
-           <h4>Select File here</h4>
+           <h4>Select File and Enter Details</h4>
          </header>
          <p>Files Supported: CSV</p>
          <form action = "/upload" method = "POST" 
             enctype = "multipart/form-data">
             <input  class="btn" type = "file" name = "file" />
+            <div class="form-group">
+                <label for="start_date">Start Date (YYYY-MM-DD):</label>
+                <input class="form-control" type="date" name="start_date" id="start_date" required>
+            </div>
+            <div class="form-group">
+                <label for="end_date">End Date (YYYY-MM-DD):</label>
+                <input class="form-control" type="date" name="end_date" id="end_date" required>
+            </div>
+            <div class="form-group">
+                <label for="hours">Hours:</label>
+                <input class="form-control" type="number" name="hours" id="hours" required>
+            </div>
             <input class="btn" type = "submit"/>
          </form>
       </div>
@@ -44,7 +56,7 @@
   border-radius: 10px;
   box-shadow: 0 5px 10px 0 rgba(0, 0, 0, 0.3);
   width: 600px;
-  height: 260px;
+  height: 560px;
   background-color: #ffffff;
   padding: 10px 30px 40px;
 }
@@ -52,7 +64,6 @@
 .card h2 {
   font-size: 22px;
   font-weight: 600;
-  
 }
 
 .drop_box {
@@ -104,6 +115,20 @@
    border: none;
    outline: none;
    padding: 12px 20px;
+   border-radius: 4px;
+ }
+ .form-group {
+   margin: 10px 0;
+   width: 100%;
+ }
+ .form-group label {
+   display: block;
+   margin-bottom: 5px;
+ }
+ .form-group input {
+   width: 100%;
+   padding: 10px;
+   border: 1px solid #ccc;
    border-radius: 4px;
  }
 </style>
